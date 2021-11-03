@@ -1,0 +1,18 @@
+{
+	"name": "gui/orme",
+	"description": "ORM Ensembliste",
+	"license": "MIT",
+	"authors":
+	[
+		{ "name": "Guillaume Outters", "email": "guillaume-sqleur@outters.eu" }
+	],
+	"version": "0.0.x-dev",
+	"require":
+	{
+		"php": ">= 5.4.0"
+	},
+	"autoload":
+	{
+		"psr-4": { "Gui\\ORME\\": "src" }
+	}
+}
