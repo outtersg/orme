@@ -21,7 +21,7 @@
  * SOFTWARE.
  */
 
-namespace Gui\ORME\Bdd;
+namespace Gui\ORME\Doctrine;
 
 use Doctrine\ORM\EntityManager;
 use Doctrine\ORM\EntityManagerInterface;
@@ -42,7 +42,7 @@ class MassEntityPersisterFactory
      */
     public static function AsBasicEntityPersister(EntityManager $em)
     {
-        $u = new HackyUnitOfWork($em, '\Gui\ORME\Bdd\MassEntityPersister');
+        $u = new HackyUnitOfWork($em, '\Gui\ORME\Doctrine\MassEntityPersister');
 
         $rem = new \ReflectionClass($em);
         $ruow = $rem->getProperty('unitOfWork');

@@ -21,7 +21,9 @@
  * SOFTWARE.
  */
 
-namespace Gui\ORME\Bdd;
+namespace Gui\ORME\Doctrine;
+
+use Gui\ORME\Bdd\Majeur;
 
 use Doctrine\ORM\Persisters\Entity\BasicEntityPersister;
 
