@@ -25,6 +25,8 @@ namespace Gui\ORME\Doctrine;
 
 use Gui\ORME\Bdd\Majeur;
 
+use Doctrine\ORM\EntityManagerInterface;
+use Doctrine\ORM\Mapping\ClassMetadata;
 use Doctrine\ORM\Persisters\Entity\BasicEntityPersister;
 
 class MassEntityPersister extends BasicEntityPersister
@@ -32,6 +34,27 @@ class MassEntityPersister extends BasicEntityPersister
     protected $inserter;
 
     protected $massThreshold = 3;
+
+    /**
+     * Cache of our legitimacy to handle entities of each encountered raw PHP class.
+     *
+     * @var array
+     */
+    protected $handledClasses = [];
+
+    public function __construct(EntityManagerInterface $em, ClassMetadata $class)
+    {
+        parent::__construct($em, $class);
+
+        $this->canDelete = true;
+        $class      = $this->class;
+        $idColumns  = $this->quoteStrategy->getIdentifierColumnNames($class, $this->platform);
+        if (count($idColumns) > 1) {
+            // @todo Perhaps we could handle. Some DBs accept a where (col1, col2) in ((val1, val2), (val3, val4)).
+            $this->canDelete = false;
+        }
+        // @todo Have two whitelists (canDelete and canInsert), that are either an *, or a list of handled classes.
+    }
 
     /**
      * {@inheritdoc}
@@ -90,6 +113,65 @@ class MassEntityPersister extends BasicEntityPersister
         $this->queuedInserts = [];
 
         return $postInsertIds;
+    }
+
+    /**
+     * {@inheritdoc}
+     */
+    public function delete($entity)
+    {
+        if (!$this->canDelete) {
+            return parent::delete($entity);
+        }
+
+        // On first run, identify to-be-deleted entities that share our class.
+        if (!isset($this->entityDeletions)) {
+            $this->entityDeletions = [];
+            foreach ($this->em->getUnitOfWork()->getScheduledEntityDeletions() as $entityToDelete) {
+                $entityClass = get_class($entityToDelete);
+                if (!isset($this->handledClasses[$entityClass])) {
+                    $this->handledClasses[$entityClass] = $this->em->getClassMetadata($entityClass)->name === $this->class->name;
+                }
+                if ($this->handledClasses[$entityClass]) {
+                    $identifier = $this->em->getUnitOfWork()->getEntityIdentifier($entityToDelete);
+                    $this->entityDeletions[] = $identifier;
+                }
+            }
+            $this->entityDeletionsCount = count($this->entityDeletions);
+        }
+
+        // If we're not the last, skip.
+        if (--$this->entityDeletionsCount > 0) {
+            return true;
+        }
+
+        if (count($this->entityDeletions) == 1) {
+            unset($this->entityDeletions);
+            return parent::delete($entity);
+        }
+
+        $class      = $this->class;
+        $tableName  = $this->quoteStrategy->getTableName($class, $this->platform);
+        $idColumns  = $this->quoteStrategy->getIdentifierColumnNames($class, $this->platform);
+        $types      = $this->getClassIdentifiersTypes($class);
+
+        foreach ($this->entityDeletions as $identifier) {
+            $this->deleteJoinTableRecords($identifier);
+        }
+
+        // @todo Handle multi-column identifiers (and modify canDelete in constructor).
+
+        foreach ($this->entityDeletions as & $ptrId) {
+            $ptrId = $ptrId[$idColumns[0]];
+        }
+        $paramMarks = '?' . str_repeat(',?', count($this->entityDeletions) - 1);
+        $result = (bool) $this->conn->executeStatement(
+            'DELETE FROM ' . $tableName . ' WHERE ' . $idColumns[0] . ' IN (' . $paramMarks . ')',
+            $this->entityDeletions,
+            array_fill(0, count($this->entityDeletions), $types[0])
+        );
+        unset($this->entityDeletions);
+        return $result;
     }
 }
 
