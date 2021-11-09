@@ -160,6 +160,7 @@ class MassEntityPersister extends BasicEntityPersister
         }
 
         // @todo Handle multi-column identifiers (and modify canDelete in constructor).
+		// @todo Allow a paquet size upper limit (for array_chunking at 1000 for e.g. Oracle).
 
         foreach ($this->entityDeletions as & $ptrId) {
             $ptrId = $ptrId[$idColumns[0]];
