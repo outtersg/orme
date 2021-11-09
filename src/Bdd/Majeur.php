@@ -62,6 +62,12 @@ class Majeur
 	{
 		if(!count($lignes)) return $résTableau ? $lignes : '';
 		
+		/* À FAIRE: permettre le forçage de $sépl à \n, ou de $sépc à \t, etc.
+		 * Condition préalable: qu'il existe un $échapés["\t"] pour "réceptionner" les \t présents dans les données.
+		 * Le forçage ne sera pas appliqué en amont (on laissera un $sépc attribué d'office parmi les caractères de contrôle, afin que les \t "données" restent tels quels le plus longtemps possible et n'appliquer les remplacements qu'une seule fois sur le bloc mémoire totalement constitué, plutôt que sur chaque champ individuel avant implode($sépc));
+		 * mais en aval, par un strtr($bloc, $sépc, "\t"), après que les "\t" auront été remplacés par '\t'.
+		 */
+		
 		// On tente une première mise en bloc opportuniste, avec des séparateurs a priori peu utilisés.
 		
 		$tentative = 0;
@@ -101,7 +107,9 @@ class Majeur
 		$nCars = count_chars($bloc);
 		
 		$àVérifier = [ $nnull, $nsépc, count($lignes) ];
-		if($résTableau) unset($àVérifier[2]); // Si le résultat est attendu comme tableau, le séparateur de fin de ligne est sans objet.
+		// Si le résultat est attendu comme tableau, le séparateur de fin de ligne est sans objet.
+		// /!\ C'est donc à l'appelant, si le tableau est ensuite destiné à être concaténé "manuellement" par un séparateur, de s'assurer que le séparateur en question ne figure pas dans les données, ou alors de le remplacer via $échappés.
+		if($résTableau) unset($àVérifier[2]);
 		foreach($àVérifier as $numSép => $nAttendus)
 			if($nCars[ord($séps[$numSép])] != $nAttendus)
 				$retape[$numSép] = & $séps[$numSép];
