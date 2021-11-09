@@ -6,7 +6,7 @@
 	[
 		{ "name": "Guillaume Outters", "email": "guillaume-sqleur@outters.eu" }
 	],
-	"version": "0.1.x-dev",
+	"version": "0.1.211103",
 	"require":
 	{
 		"php": ">= 5.4.0"
