@@ -44,8 +44,9 @@ class Majeur
 	public function _insérer($bdd, $table, $colonnes, $lignes)
 	{
 		if(!method_exists($bdd, 'pgsqlCopyFromArray')) return false;
+		$échappés = [ "\n" => '\n', "\r" => '\r', "\\" => "\\\\" ]; // Le \ bien à la fin.
 		
-		if(!($bloc = $this->tabEnBloc($lignes, true, true))) return false;
+		if(!($bloc = $this->tabEnBloc($lignes, true, $échappés))) return false;
 		
 		return $bdd->pgsqlCopyFromArray
 		(
@@ -57,18 +58,19 @@ class Majeur
 		);
 	}
 	
-	public function tabEnBloc($lignes, $résTableau = false, $retourFatal = false)
+	public function tabEnBloc($lignes, $résTableau = false, $échappés = [])
 	{
 		if(!count($lignes)) return $résTableau ? $lignes : '';
 		
 		// On tente une première mise en bloc opportuniste, avec des séparateurs a priori peu utilisés.
 		
 		$tentative = 0;
-		$posSép = 2;
-		$null = chr(++$posSép);
-		$sépc = chr(++$posSép);
-		$sépl = chr(++$posSép);
+		$numSép = 2;
+		$null = $sépc = $sépl = 0;
 		$séps = [ & $null, & $sépc, & $sépl ];
+		foreach($séps as & $ptrSép)
+			while($ptrSép = chr(++$numSép) && isset($échappés[$numSép])) {}
+		if($ptrSép >= ' ') return null; // Ouille, on est entré dans la plage ASCII lisible sans trouver de séparateurs disponibles dans les caractères de contrôle.
 		
 		retenter:
 		$nnull = 0;
@@ -98,9 +100,6 @@ class Majeur
 		
 		$nCars = count_chars($bloc);
 		
-		if($retourFatal && $nCars[10])
-			return null;
-		
 		$àVérifier = [ $nnull, $nsépc, count($lignes) ];
 		if($résTableau) unset($àVérifier[2]); // Si le résultat est attendu comme tableau, le séparateur de fin de ligne est sans objet.
 		foreach($àVérifier as $numSép => $nAttendus)
@@ -111,11 +110,28 @@ class Majeur
 			$this->null = $null;
 			$this->sépc = $sépc;
 			$this->sépl = $sépl;
+			// Le remplacement des séquences d'échappement étant coûteux, on ne l'applique qu'en cas de présence d'un des caractères ciblés.
+			$échappésPrésents = [];
+			foreach($échappés as $avant => $après)
+				if(strlen($avant) > 1 || $nCars[ord($avant)] > 0)
+				{
+					if($après === null && (strlen($avant) == 1 || strpos($bloc, $avant) !== false)) return false; // Mode fatal: une séquence finissant en null vaut aveux immédiat d'impuissance.
+					$échappésPrésents[$avant] = $après;
+				}
+			if(count($échappésPrésents))
+				if($résTableau)
+					foreach($r as & $ptrLigne)
+						$ptrLigne = strtr($ptrLigne, $échappésPrésents);
+				else
+					$bloc = strtr($bloc, $échappésPrésents);
+			// Retour!
 			return $résTableau ? $r : $bloc;
 		}
 		
 		assert(++$tentative < 2); // Gros problème si on tombe là: on est tombé sur un os, on a cru le résoudre en cherchant scrupuleusement des séparateurs vraiment pas utilisés, mais on retombe sur un nouvel os.
 		
+		foreach($échappés as $avant => $après) // On s'assure que les caractères à échapper ne sont pas pris comme séparateurs, en simulant leur présence dans les données.
+			$nCars[ord($avant)] = 1;
 		foreach($retape as & $ptrSép)
 		{
 			while($nCars[++$numSép])
