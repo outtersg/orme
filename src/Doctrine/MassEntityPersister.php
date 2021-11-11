@@ -54,6 +54,12 @@ class MassEntityPersister extends BasicEntityPersister
             // @todo Perhaps we could handle. Some DBs accept a where (col1, col2) in ((val1, val2), (val3, val4)).
             $this->canDelete = false;
         }
+        foreach ([ 'executeStatement', 'executeUpdate' ] as $connUpdater) {
+            if (method_exists($this->conn, $connUpdater)) {
+                $this->connUpdater = $connUpdater;
+                break;
+            }
+        }
         // @todo Have two whitelists (canDelete and canInsert), that are either an *, or a list of handled classes.
     }
 
@@ -167,7 +173,8 @@ class MassEntityPersister extends BasicEntityPersister
             $ptrId = $ptrId[$idColumns[0]];
         }
         $paramMarks = '?' . str_repeat(',?', count($this->entityDeletions) - 1);
-        $result = (bool) $this->conn->executeStatement(
+        $connUpdater = $this->connUpdater;
+        $result = (bool) $this->conn->$connUpdater(
             'DELETE FROM ' . $tableName . ' WHERE ' . $idColumns[0] . ' IN (' . $paramMarks . ')',
             $this->entityDeletions,
             array_fill(0, count($this->entityDeletions), $types[0])
