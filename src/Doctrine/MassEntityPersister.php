@@ -28,6 +28,7 @@ use Gui\ORME\Bdd\Majeur;
 use Doctrine\ORM\EntityManagerInterface;
 use Doctrine\ORM\Mapping\ClassMetadata;
 use Doctrine\ORM\Persisters\Entity\BasicEntityPersister;
+use Doctrine\ORM\Utility\PersisterHelper;
 
 class MassEntityPersister extends BasicEntityPersister
 {
@@ -173,6 +174,25 @@ class MassEntityPersister extends BasicEntityPersister
         );
         unset($this->entityDeletions);
         return $result;
+    }
+
+    /**
+     * Pure copy of parent's method, for compatibility for old versions of BasicEntityPersister missing it.
+     * @return string[]
+     */
+    protected function getClassIdentifiersTypes(ClassMetadata $class) : array
+    {
+        $entityManager = $this->em;
+
+        return array_map(
+            static function ($fieldName) use ($class, $entityManager) : string {
+                $types = PersisterHelper::getTypeOfField($fieldName, $class, $entityManager);
+                assert(isset($types[0]));
+
+                return $types[0];
+            },
+            $class->identifier
+        );
     }
 }
 
