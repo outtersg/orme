@@ -121,7 +121,6 @@ class MassEntityPersister extends BasicEntityPersister
             return parent::executeInserts();
         }
 
-        $stmt       = $this->conn->prepare($this->getInsertSQL());
         $tableName  = $this->class->getTableName();
         $tableData  = [];
 
