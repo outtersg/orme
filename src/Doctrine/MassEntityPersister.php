@@ -26,6 +26,7 @@ namespace Gui\ORME\Doctrine;
 use Gui\ORME\Bdd\Majeur;
 
 use Doctrine\ORM\EntityManagerInterface;
+use Doctrine\ORM\Id\SequenceGenerator;
 use Doctrine\ORM\Mapping\ClassMetadata;
 use Doctrine\ORM\Persisters\Entity\BasicEntityPersister;
 use Doctrine\ORM\Utility\PersisterHelper;
@@ -37,6 +38,8 @@ class MassEntityPersister extends BasicEntityPersister
     protected $massThreshold = 3;
 
     protected $handlesInserts = true;
+
+    protected $handlesBatchSeq = true;
 
     /**
      * Cache of our legitimacy to handle entities of each encountered raw PHP class.
@@ -65,6 +68,18 @@ class MassEntityPersister extends BasicEntityPersister
             $this->handlesInserts // Do not force if explicitely disabled.
             && !$class->idGenerator->isPostInsertGenerator(true)
             && $db instanceof \PDO && $db->getAttribute(\PDO::ATTR_DRIVER_NAME) == 'pgsql';
+
+        /*- Mass sequence generator -*/
+
+        // Only our executeInserts() knows how to drive BatchSequenceGenerator, so first condition: $this->handlesInserts.
+
+        if (($this->handlesBatchSeq = $this->handlesInserts && $this->handlesBatchSeq && $class->idGenerator instanceof SequenceGenerator)) {
+            $seqDescr = unserialize($class->idGenerator->serialize());
+            $class->idGenerator = new BatchSequenceGenerator(
+                $seqDescr['sequenceName'],
+                $seqDescr['allocationSize']
+            );
+        }
 
         /*- Mass deleting -*/
 
@@ -110,6 +125,9 @@ class MassEntityPersister extends BasicEntityPersister
         $tableName  = $this->class->getTableName();
         $tableData  = [];
 
+        if ($this->handlesBatchSeq) {
+            $idGenerator->fetch($this->em, count($this->queuedInserts));
+        }
         foreach ($this->queuedInserts as $entity) {
             $insertData = $this->prepareInsertData($entity);
             if (isset($insertData[$tableName])) {
@@ -125,9 +143,14 @@ class MassEntityPersister extends BasicEntityPersister
             return parent::executeInserts();
         }
 
-        if ($this->class->isVersioned) {
-            foreach ($this->queuedInserts as $entity) {
-                $id = $this->class->getIdentifierValues($entity);
+        foreach ($this->queuedInserts as $entity) {
+            $id = $this->class->getIdentifierValues($entity);
+            if ($idGenerator->isPostInsertGenerator()) {
+                // Not a true postInsertGenerator (our condition was to be a preInsert one), but one called lately,
+                // whose result is still to be reported, like postInsertGenerators.
+                $postInsertIds[] = ['generatedId' => $id[$this->class->identifier[0]], 'entity' => $entity];
+            }
+            if ($this->class->isVersioned) {
                 $this->assignDefaultVersionValue($entity, $id);
             }
         }
@@ -135,6 +158,38 @@ class MassEntityPersister extends BasicEntityPersister
         $this->queuedInserts = [];
 
         return $postInsertIds;
+    }
+
+    /**
+     * {@inheritdoc}
+     */
+    protected function prepareInsertData($entity)
+    {
+        $insertData = parent::prepareInsertData($entity);
+
+        // If ID generation was delayed, it's now our last chance to update our object!
+        // Too late for the changeset, so just add it raw to $insertData.
+
+        if ($this->handlesBatchSeq) {
+            $class = $this->class;
+            $idGenerator = $class->idGenerator;
+
+            $idValue = $idGenerator->generate($this->em, $entity);
+            $idValue = $this->em->getConnection()->convertToPHPValue($idValue, $class->getTypeOfField($class->getSingleIdentifierFieldName()));
+            $idValue = [$class->getSingleIdentifierFieldName() => $idValue];
+            $class->setIdentifierValues($entity, $idValue);
+
+            foreach ($idValue as $field => $val) {
+                $fieldMapping = $class->fieldMappings[$field];
+                $columnName   = $fieldMapping['columnName'];
+
+                $this->columnTypes[$columnName] = $fieldMapping['type'];
+
+                $insertData[$this->getOwningTable($field)][$columnName] = $val;
+            }
+        }
+
+        return $insertData;
     }
 
     /**

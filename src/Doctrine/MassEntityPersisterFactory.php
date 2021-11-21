@@ -23,6 +23,7 @@
 
 namespace Gui\ORME\Doctrine;
 
+use Doctrine\Common\Persistence\Mapping\ClassMetadataFactory;
 use Doctrine\ORM\EntityManager;
 use Doctrine\ORM\EntityManagerInterface;
 use Doctrine\ORM\Persisters\Entity\JoinedSubclassPersister;
@@ -48,6 +49,11 @@ class MassEntityPersisterFactory
         $ruow = $rem->getProperty('unitOfWork');
         $ruow->setAccessible(true);
         $ruow->setValue($em, $u);
+
+        $cmf = new HackyClassMetadataFactory($em->getMetadataFactory(), $u);
+        $rcmf = $rem->getProperty('metadataFactory');
+        $rcmf->setAccessible(true);
+        $rcmf->setValue($em, $cmf);
     }
 }
 
@@ -106,6 +112,68 @@ class HackyUnitOfWork extends UnitOfWork
         $rpers->setValue($this, $this->persisters);
 
         return $this->persisters[$entityName];
+    }
+}
+
+/**
+ * A proxy to ClassMetadataFactory that knows how to interact with the EntityPersister to get it an optimized
+ * SequenceGenerator.
+ */
+class HackyClassMetadataFactory implements ClassMetadataFactory
+{
+    protected $loadedMetadata = [];
+
+    public function __construct($impl, $uow)
+    {
+        $this->impl = $impl;
+        $this->uow = $uow;
+    }
+
+    public function isTransient($class)
+    {
+        return $this->impl->isTransient($class);
+    }
+
+    public function setMetadataFor($className, $class)
+    {
+        unset($this->loadedMetadata[$className]);
+        $this->impl->setMetadataFor($className, $class);
+    }
+
+    public function getMetadataFor($className)
+    {
+        if (isset($this->loadedMetadata[$className])) {
+            return $this->loadedMetadata[$className];
+        }
+
+        $class = $this->loadedMetadata[$className] = $this->impl->getMetadataFor($className);
+
+        // Now we immediately call UOW's persister for class: in case it is a MassEntityPersister, it will know
+        // how to drive a BatchSequenceGenerator and replace any SequenceGenerator with a Batch one (if configured to).
+        // The persister's constructor will detect if it can drive it, and then plug it directly into the $class.
+        $this->uow->getEntityPersister($className);
+
+        return $class;
+    }
+
+    public function getLoadedMetadata()
+    {
+        return $this->loadedMetadata;
+    }
+
+    public function getAllMetadata()
+    {
+        return $this->impl->getAllMetadata();
+    }
+
+    public function hasMetadataFor($className)
+    {
+        return isset($this->loadedMetadata[$className]) ? true : $this->impl->hasMetadataFor($className);
+    }
+
+    public function getCacheDriver()
+    {
+        return $this->impl->getCacheDriver();
     }
 }
 
