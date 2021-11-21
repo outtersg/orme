@@ -36,6 +36,8 @@ class MassEntityPersister extends BasicEntityPersister
 
     protected $massThreshold = 3;
 
+    protected $handlesInserts = true;
+
     /**
      * Cache of our legitimacy to handle entities of each encountered raw PHP class.
      *
@@ -46,6 +48,25 @@ class MassEntityPersister extends BasicEntityPersister
     public function __construct(EntityManagerInterface $em, ClassMetadata $class)
     {
         parent::__construct($em, $class);
+
+        // @todo Have UnitOfWork hold whitelists, that are either an * or a list of handled classes, to tell which
+        // features will go in each individual, class-specific, instanciated EntityPersister.
+
+        /*- Mass inserting -*/
+
+        // Two conditions on mass inserting:
+        // - having the driver offer the feature
+        // - having a unique column helping us to associate the input object with the created DB entry
+        //   Of course a (pre-filled) ID does exactly that, so we require it as a shortcut
+
+        $db = $this->conn->getWrappedConnection();
+
+        $this->handlesInserts =
+            $this->handlesInserts // Do not force if explicitely disabled.
+            && !$class->idGenerator->isPostInsertGenerator(true)
+            && $db instanceof \PDO && $db->getAttribute(\PDO::ATTR_DRIVER_NAME) == 'pgsql';
+
+        /*- Mass deleting -*/
 
         $this->canDelete = true;
         $class      = $this->class;
@@ -60,7 +81,6 @@ class MassEntityPersister extends BasicEntityPersister
                 break;
             }
         }
-        // @todo Have two whitelists (canDelete and canInsert), that are either an *, or a list of handled classes.
     }
 
     /**
@@ -78,15 +98,10 @@ class MassEntityPersister extends BasicEntityPersister
 
         $postInsertIds  = [];
         $idGenerator    = $this->class->idGenerator;
-        $isPostInsertId = $idGenerator->isPostInsertGenerator();
-
-        // Two conditions on mass inserting:
-        // - having the driver offer the feature
-        // - having a unique column helping us to associate the input object with the created DB entry
-        //   Of course a (pre-filled) ID does exactly that, so we require it as a shortcut
 
         $db = $this->conn->getWrappedConnection();
-        if ($isPostInsertId || !($db instanceof \PDO) || $db->getAttribute(\PDO::ATTR_DRIVER_NAME) != 'pgsql') {
+
+        if (!$this->handlesInserts) {
             // @todo Notice that the optimized version is not available.
             return parent::executeInserts();
         }
