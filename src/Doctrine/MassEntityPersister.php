@@ -253,7 +253,7 @@ class MassEntityPersister extends BasicEntityPersister
     }
 
     /**
-     * Pure copy of parent's method, for compatibility for old versions of BasicEntityPersister missing it.
+     * Pure copy of parent's method, for compatibility for old versions (< 2.6) of BasicEntityPersister missing it.
      * @return string[]
      */
     protected function getClassIdentifiersTypes(ClassMetadata $class) : array
