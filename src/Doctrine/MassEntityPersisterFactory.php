@@ -67,6 +67,15 @@ class HackyUnitOfWork extends UnitOfWork
         parent::__construct($em);
         $this->em = $em;
         $this->bepClass = $basicEntityPersisterClass;
+
+        $rclass = new \ReflectionClass($this);
+        $rclass = $rclass->getParentClass();
+
+        $this->reflEntIds = $rclass->getProperty('entityIdentifiers');
+        $this->reflEntIds->setAccessible(true);
+        if (!method_exists($this, 'hasMissingIdsWhichAreForeignKeys')) {
+            $this->_foreignKeyIdClasses = [];
+        }
     }
 
     public function getEntityPersister($entityName)
@@ -112,6 +121,48 @@ class HackyUnitOfWork extends UnitOfWork
         $rpers->setValue($this, $this->persisters);
 
         return $this->persisters[$entityName];
+    }
+
+    /*- Doctrine < 2.6: handle primary foreign keys --------------------------*/
+    /* If one of our optimized entities is used as a foreign but primary key to another entity, our optimization gets
+     * broken. */
+
+    public function scheduleForInsert($entity)
+    {
+        /* Ensure we have not put an empty foreign key, on old Doctrine versions (< 2.6) missing
+         * hasMissingIdsWhichAreForeignKeys().
+         * See https://github.com/doctrine/orm/commit/35c3669ebc822c88444d92e9ffc739d12f551d46
+         */
+        if (isset($this->_foreignKeyIdClasses)) {
+            $className = get_class($entity);
+            $class = $this->em->getClassMetadata($className);
+            if (!isset($this->_foreignKeyIdClasses[$className])) {
+                $this->_foreignKeyIdClasses[$className] = $this->classForeignKeyFields($class);
+            }
+            if ($this->_foreignKeyIdClasses[$className]) {
+                $entityIdentifiers = $this->reflEntIds->getValue($this);
+                $oid = spl_object_hash($entity);
+                foreach ($this->_foreignKeyIdClasses[$className] as $idField) {
+                    if (!isset($entityIdentifiers[$oid][$idField])) {
+                        unset($entityIdentifiers[$oid]);
+                        $this->reflEntIds->setValue($this, $entityIdentifiers);
+                        break;
+                    }
+                }
+            }
+        }
+        return parent::scheduleForInsert($entity);
+    }
+
+    protected function classForeignKeyFields($class)
+    {
+        $fkeys = [];
+        foreach ($class->identifier as $fieldName) {
+            if (isset($class->associationMappings[$fieldName])) {
+                $fkeys[] = $fieldName;
+            }
+        }
+        return empty($fkeys) ? false : $fkeys;
     }
 }
 
