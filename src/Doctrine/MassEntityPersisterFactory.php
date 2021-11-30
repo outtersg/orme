@@ -43,9 +43,13 @@ class MassEntityPersisterFactory
      */
     public static function AsBasicEntityPersister(EntityManager $em)
     {
-        $u = new HackyUnitOfWork($em, '\Gui\ORME\Doctrine\MassEntityPersister');
-
         $rem = new \ReflectionClass($em);
+
+        $u = new HackyUnitOfWork(
+            $em,
+            '\Gui\ORME\Doctrine\MassEntityPersister',
+            '\Gui\ORME\Doctrine\BatchSingleTablePersister'
+        );
         $ruow = $rem->getProperty('unitOfWork');
         $ruow->setAccessible(true);
         $ruow->setValue($em, $u);
@@ -62,11 +66,15 @@ class HackyUnitOfWork extends UnitOfWork
     protected $em;
     protected $persisters = [];
 
-    public function __construct(EntityManagerInterface $em, $basicEntityPersisterClass = '\Doctrine\ORM\Persisters\Entity\BasicEntityPersister')
-    {
+    public function __construct(
+        EntityManagerInterface $em,
+        $basicEntityPersisterClass = '\Doctrine\ORM\Persisters\Entity\BasicEntityPersister',
+        $singleTablePersisterClass = '\Doctrine\ORM\Persisters\Entity\SingleTablePersister'
+    ) {
         parent::__construct($em);
         $this->em = $em;
         $this->bepClass = $basicEntityPersisterClass;
+        $this->stpClass = $singleTablePersisterClass;
 
         $rclass = new \ReflectionClass($this);
         $rclass = $rclass->getParentClass();
@@ -93,7 +101,8 @@ class HackyUnitOfWork extends UnitOfWork
                 break;
 
             case $class->isInheritanceTypeSingleTable():
-                $persister = new SingleTablePersister($this->em, $class);
+                $stpClass = $this->stpClass;
+                $persister = new $stpClass($this->em, $class);
                 break;
 
             case $class->isInheritanceTypeJoined():
