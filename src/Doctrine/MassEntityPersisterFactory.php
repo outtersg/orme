@@ -26,6 +26,7 @@ namespace Gui\ORME\Doctrine;
 use Doctrine\Common\Persistence\Mapping\ClassMetadataFactory;
 use Doctrine\ORM\EntityManager;
 use Doctrine\ORM\EntityManagerInterface;
+use Doctrine\ORM\ORMInvalidArgumentException;
 use Doctrine\ORM\Persisters\Entity\JoinedSubclassPersister;
 use Doctrine\ORM\Persisters\Entity\SingleTablePersister;
 use Doctrine\ORM\UnitOfWork;
@@ -143,6 +144,29 @@ class HackyUnitOfWork extends UnitOfWork
 
     public function scheduleForInsert($entity)
     {
+        /* Doctrine (observed on versions 2.5 to 2.10):
+         * We should NOT allow an already-persisted object to be reinserted.
+         * This can happen when the user cleared us, but kept a reference to an entity that it repersists as new.
+         *   In case of a SequenceGenerator or IdentityGenerator, it will create a duplicate
+         *     (the memory object gets a new ID and is reinserted with its last-fetched fields, except the ID that changes)
+         *   In case of an AssignedGenerator the DBMS will throw us a duplicate key
+         *     (we reinsert exactly the same values, including the ID)
+         * THIS HAPPENS DUE TO A DEVELOPER'S ERROR
+         *   but we can be kind and notify their mistake.
+         * a. Detecting it is not easy on preInsertGenerators (apart from querying the DB),
+         * b. could be easier for postInsertGens (if the entity already has an ID when scheduledForInsert()),
+         * c. and we have a really easy case with BatchSequenceGenerator.
+         * So for now only handle c.
+         */
+        if (isset($entity->__batchSequenceId)) {
+            // We can either:
+            // 1. let go (current Doctrine behaviour): let the DB error or create a duplicate
+            // 2. throw, to make the developer aware
+            // 3. or ignore the insert, just registerManaged(). But this would require a fetch to make sure the entity
+            //    is there (and if it isn't, clear the ID then let go)
+            throw ORMInvalidArgumentException::scheduleInsertForManagedEntity($entity);
+        }
+
         /* Ensure we have not put an empty foreign key, on old Doctrine versions (< 2.6) missing
          * hasMissingIdsWhichAreForeignKeys().
          * See https://github.com/doctrine/orm/commit/35c3669ebc822c88444d92e9ffc739d12f551d46
