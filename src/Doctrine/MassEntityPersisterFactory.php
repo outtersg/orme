@@ -43,6 +43,11 @@ class MassEntityPersisterFactory
      */
     public static function AsBasicEntityPersister(EntityManager $em)
     {
+        if ($em->getUnitOfWork() instanceof HackyUnitOfWork) {
+            return;
+        }
+        // @todo Refuse to replace a dirty UnitOfWork.
+
         $rem = new \ReflectionClass($em);
 
         $u = new HackyUnitOfWork(
