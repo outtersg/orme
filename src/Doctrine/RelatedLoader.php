@@ -34,11 +34,11 @@ class RelatedLoader
      * $liste s'utilise ensuite normalement (foreach ($liste as $e) $e->getRelation()->…).
      *
      * @param Collection|array $liste
-     * @param string $rel
+     * @param string|array $rels
      * @param ?EntityManagerInterface $em Si $liste est une PersistentCollection, il est inutile de passer l'$em ici, il
      *                                    sera prélevé de $liste.
      */
-    public static function loadRelated($liste, string $rel, ?EntityManagerInterface $em = null): void
+    public static function loadRelated($liste, $rels, ?EntityManagerInterface $em = null): void
     {
         if (!count($liste)) {
             return;
@@ -65,12 +65,18 @@ class RelatedLoader
 
         $qb = $em->createQueryBuilder();
         $qb
-            ->select('partial e.{id}, r')
-            ->from($classe, 'e')
-            ->leftJoin('e.'.$rel, 'r')
-            ->where('e.id in (:ids)')
+            ->select('partial _.{id}')
+            ->from($classe, '_')
+            ->where('_.id in (:ids)')
             ->setParameter('ids', $ids)
         ;
+        foreach (is_array($rels) ? $rels : [ $rels ] as $alias => $rel) {
+            if (is_numeric($alias)) {
+                $alias = '_'.$alias;
+            }
+            $qb->leftJoin((strpos($rel, '.') !== false ? '' : '_.').$rel, $alias);
+            $qb->addSelect($alias);
+        }
         $qb->getQuery()->getResult();
     }
 }
