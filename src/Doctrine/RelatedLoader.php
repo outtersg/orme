@@ -23,9 +23,10 @@
 
 namespace Gui\ORME\Doctrine;
 
+use Doctrine\Common\Collections\Collection;
 use Doctrine\ORM\EntityManagerInterface;
 
-class RelatedLoader
+trait RelatedLoader
 {
     /**
      * Simule le loadRelated mentionné dans https://stackoverflow.com/a/4396594/1346819 (Doctrine 1?).
@@ -37,11 +38,18 @@ class RelatedLoader
      * @param string|array $rels
      * @param ?EntityManagerInterface $em Si $liste est une PersistentCollection, il est inutile de passer l'$em ici, il
      *                                    sera prélevé de $liste.
+     * @param bool $retourAPlat Si faux (par défaut), renvoie $liste enrichie. Si vrai, renvoie côte-à-côte les objets
+     *                          liés dénichés.
+     *
+     * @return Collection Soit la version Collection de $liste, soit (si $retourAPlat) le tableau à plat de toutes les relations trouvées.
+     *                    Si $rels comporte plusieurs relations, c'est la première qui sera exploitée.
+     *                    Si plusieurs éléments de $liste sont liés à la même entité, celle-ci sera renvoyée en
+     *                    plusieurs exemplaires.
      */
-    public static function loadRelated($liste, $rels, ?EntityManagerInterface $em = null): void
+    public static function loadRelatedFor($liste, $rels, ?EntityManagerInterface $em = null, bool $retourAPlat = false): Collection
     {
         if (!count($liste)) {
-            return;
+            return new ManagedCollection($em, []);
         }
 
         $classes = [];
@@ -90,6 +98,26 @@ class RelatedLoader
             $qb->leftJoin((strpos($rel, '.') !== false ? '' : '_.').$rel, $alias);
             $qb->addSelect($alias);
         }
-        $qb->getQuery()->getResult();
+        $r = $qb->getQuery()->getResult();
+        if ($retourAPlat) {
+            $rt = [];
+            if (is_array($rel = $rels)) {
+                foreach ($rels as $rel) { break; }
+            }
+            foreach ($r as $root) {
+                $fils = $meta->getFieldValue($root, $rel);
+                $rt = array_merge($rt, is_array($fils) ? $fils : $fils->toArray());
+                // @todo? Une seule occurrence si une même entrée est référencée depuis deux de $liste.
+                //        Cela inciterait aussi au passage à la PersistentCollection (son constructeur ayant besoin d'un ClassMetadataInfo,
+                //        or pour dédoublonner ici on en aurait aussi besoin).
+            }
+            $r = new ManagedCollection($em, $rt);
+        }
+        return $r;
+    }
+
+    public function loadRelated($liste, $rels): ManagedCollection
+    {
+        return static::loadRelatedFor($liste, $rels, $this->em, true);
     }
 }
