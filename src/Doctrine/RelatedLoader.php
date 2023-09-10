@@ -50,11 +50,6 @@ class RelatedLoader
             break;
         }
 
-        $ids = [];
-        foreach ($liste as $elem) {
-            $ids[] = $elem->getId();
-        }
-
         if (!isset($em)) {
             // Vraiment le plaisir de rendre opaque.
             $rListe = new \ReflectionObject($liste);
@@ -63,11 +58,26 @@ class RelatedLoader
             $em = $rEm->getValue($liste);
         }
 
+        $meta = $em->getClassMetadata($classe);
+
+        $ids = [];
+        foreach ($liste as $elem) {
+            $id = $meta->getIdentifierValues($elem);
+            if (!isset($champId)) {
+                if (count($id) != 1) {
+                    throw new \Exception('loadRelated ne gère que les entités à clé mono-champ');
+                }
+                $champId = array_keys($id)[0];
+            }
+            $ids[$id[$champId]] = true;
+        }
+        $ids = array_keys($ids);
+
         $qb = $em->createQueryBuilder();
         $qb
-            ->select('partial _.{id}')
+            ->select('partial _.{'.$champId.'}')
             ->from($classe, '_')
-            ->where('_.id in (:ids)')
+            ->where('_.'.$champId.' in (:ids)')
             ->setParameter('ids', $ids)
         ;
         foreach (is_array($rels) ? $rels : [ $rels ] as $alias => $rel) {
