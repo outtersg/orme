@@ -30,6 +30,7 @@ trait RelatedLoader
 {
     /**
      * Simule le loadRelated mentionné dans https://stackoverflow.com/a/4396594/1346819 (Doctrine 1?).
+     * Cf. aussi DDC-1681 (https://github.com/doctrine/orm/issues/2327).
      * Permet de charger les relations d'une liste d'entités en une fois, plutôt que de boucler sur la liste pour
      * récupérer la relation entrée par entrée.
      * $liste s'utilise ensuite normalement (foreach ($liste as $e) $e->getRelation()->…).
