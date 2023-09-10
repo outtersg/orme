@@ -38,8 +38,21 @@ class ManagedCollection extends ArrayCollection
         $this->em = $em;
     }
 
-    public function loadRelated($rels): ArrayCollection
+    /**
+     * Précharge plusieurs relations depuis les objets de la collection.
+     *
+     * @param string|string[] ...$relss Chacun des paramètres à la méthode est soit le nom d'une relation, soit un tableau enchaînant plusieurs relations.
+     *                                  Ex.: loadRelated('couleurDeCheveux', [ 'd' => 'diplôme', 'e' => 'd.école', 'e.adresse' ], 'conjoint')
+     *                                  Chaque relation ou groupe de relations sera chargée indépendamment (dans l'ex. 3 requêtes seront émises pour aller chercher couleur de cheveux, diplômes avec toute leur structure, et conjoint); un groupe de relations est à l'inverse chargé en une fois (les diplômes seront ramenés avec leur école et l'adresse de celle-ci).
+     *
+     * @return ArrayCollection La liste des entités remontées par le _premier_ élément du _dernier_ groupe.
+     *                         (dans notre exemple: la liste des conjoints).
+     */
+    public function loadRelated(...$relss): ArrayCollection
     {
-        return $this->_loadRelated($this, $rels);
+        foreach ($relss as $rels) {
+            $r = $this->_loadRelated($this, $rels);
+        }
+        return $r;
     }
 }
