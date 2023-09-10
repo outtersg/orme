@@ -44,11 +44,14 @@ class RelatedLoader
             return;
         }
 
-        // On suppose toute la liste sur le même modèle.
+        $classes = [];
         foreach ($liste as $elem) {
-            $classe = get_class($elem);
-            break;
+            $classes[get_class($elem)] = true;
         }
+        if (count($classes) != 1) {
+            throw new \Exception('loadRelated ne sait pas traiter les liste mixtes ('.implode(', ', array_keys($classes)).')');
+        }
+        $classe = array_keys($classes)[0];
 
         if (!isset($em)) {
             // Vraiment le plaisir de rendre opaque.
