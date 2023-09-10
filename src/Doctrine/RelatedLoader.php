@@ -49,15 +49,11 @@ trait RelatedLoader
      */
     public static function loadRelatedFor($liste, $rels, ?EntityManagerInterface $em = null, bool $retourAPlat = false): Collection
     {
-        if (!count($liste)) {
-            return new ManagedCollection($em, []);
-        }
-
         $classes = [];
         foreach ($liste as $elem) {
             $classes[get_class($elem)] = true;
         }
-        if (count($classes) != 1) {
+        if (count($classes) > 1) {
             throw new \Exception('loadRelated ne sait pas traiter les liste mixtes ('.implode(', ', array_keys($classes)).')');
         }
         $classe = array_keys($classes)[0];
@@ -68,6 +64,10 @@ trait RelatedLoader
             $rEm = $rListe->getProperty('em');
             $rEm->setAccessible(true);
             $em = $rEm->getValue($liste);
+        }
+
+        if (!count($liste)) {
+            return new ManagedCollection($em, []);
         }
 
         $meta = $em->getClassMetadata($classe);
@@ -112,8 +112,9 @@ trait RelatedLoader
                 //        Cela inciterait aussi au passage à la PersistentCollection (son constructeur ayant besoin d'un ClassMetadataInfo,
                 //        or pour dédoublonner ici on en aurait aussi besoin).
             }
-            $r = new ManagedCollection($em, $rt);
+            $r = $rt;
         }
+        $r = new ManagedCollection($em, $r);
         return $r;
     }
 
